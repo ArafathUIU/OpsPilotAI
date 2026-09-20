@@ -10,13 +10,17 @@ from src.agents.log_analyst import LogAnalystAgent
 from src.agents.memory_analyst import IncidentMemoryAgent
 from src.agents.metrics_analyst import MetricsAnalystAgent
 from src.agents.rca import RCAAgent
+from src.agents.remediation_agent import RemediationAgent
 from src.agents.supervisor import SupervisorAgent
+from src.agents.verifier import VerificationAgent
 from src.domain.state import (
+    ActionExecutionResult,
     IncidentState,
     InvestigationTask,
     TimelineEvent,
 )
 from src.observability.logging import get_logger
+from src.safety.execution_runner import ExecutionRunner
 
 logger = get_logger(__name__)
 
@@ -33,6 +37,9 @@ class IncidentWorkflow:
         memory_analyst: IncidentMemoryAgent | None = None,
         rca: RCAAgent | None = None,
         critic: CriticAgent | None = None,
+        remediation_agent: RemediationAgent | None = None,
+        verifier: VerificationAgent | None = None,
+        execution_runner: ExecutionRunner | None = None,
     ) -> None:
         self.supervisor = supervisor or SupervisorAgent()
         self.log_analyst = log_analyst or LogAnalystAgent()
@@ -41,6 +48,9 @@ class IncidentWorkflow:
         self.memory_analyst = memory_analyst or IncidentMemoryAgent()
         self.rca = rca or RCAAgent()
         self.critic = critic or CriticAgent()
+        self.remediation_agent = remediation_agent or RemediationAgent()
+        self.verifier = verifier or VerificationAgent()
+        self.execution_runner = execution_runner or ExecutionRunner()
 
     async def supervisor_node(self, state: IncidentState) -> dict[str, Any]:
         """Triage incident alert and build targeted investigation tasks."""
@@ -211,8 +221,114 @@ class IncidentWorkflow:
             "iteration_count": state.iteration_count + 1,
         }
 
+    async def remediation_planning_node(self, state: IncidentState) -> dict[str, Any]:
+        """Formulate risk-assessed remediation plan for the confirmed hypothesis."""
+        if not state.selected_hypothesis:
+            logger.warning("LangGraph: No selected hypothesis to remediate.")
+            return {"current_stage": "FAILED"}
+
+        logger.info(f"LangGraph: Planning remediation for [{state.selected_hypothesis.id}]")
+        plan = await self.remediation_agent.plan_remediation(
+            incident_id=state.incident_id,
+            hypothesis=state.selected_hypothesis,
+            target_services=state.affected_services,
+        )
+
+        event = TimelineEvent(
+            stage="REMEDIATION_PLANNING",
+            actor="RemediationAgent",
+            message=f"Formulated remediation plan with {len(plan.actions)} actions. Summary: {plan.summary}",
+            metadata={"actions": [a.model_dump(mode="json") for a in plan.actions]},
+        )
+        return {
+            "current_stage": "REMEDIATION_PLANNING",
+            "remediation_plan": plan,
+            "pending_approvals": [a for a in plan.actions if a.requires_approval],
+            "timeline": [event],
+        }
+
+    async def execution_node(self, state: IncidentState) -> dict[str, Any]:
+        """Execute permitted remediation actions with idempotency tracking."""
+        if not state.remediation_plan or not state.remediation_plan.actions:
+            logger.warning("LangGraph: No remediation plan to execute.")
+            return {"current_stage": "FAILED"}
+
+        logger.info(f"LangGraph: Executing remediation plan for [{state.incident_id}]")
+        results: list[ActionExecutionResult] = []
+        events: list[TimelineEvent] = []
+
+        for action in state.remediation_plan.actions:
+            res = await self.execution_runner.execute_action(action, caller_role="OPERATOR")
+            results.append(res)
+            event = TimelineEvent(
+                stage="EXECUTING",
+                actor="ExecutionRunner",
+                message=f"Action [{action.action_id}] status: {res.status}. Output: {res.output}",
+                metadata={"action_id": action.action_id, "duration_ms": res.duration_ms},
+            )
+            events.append(event)
+
+        return {
+            "current_stage": "EXECUTING",
+            "execution_results": results,
+            "timeline": events,
+        }
+
+    async def verification_node(self, state: IncidentState) -> dict[str, Any]:
+        """Empirically verify telemetry recovery and trigger rollback if degraded."""
+        target_service = (
+            state.affected_services[0] if state.affected_services else "payment-service"
+        )
+        executed_action_id = (
+            state.execution_results[-1].action_id if state.execution_results else "ACT-UNKNOWN"
+        )
+
+        logger.info(
+            f"LangGraph: Verifying recovery for [{target_service}] after [{executed_action_id}]"
+        )
+        assessment = await self.verifier.verify_recovery(target_service, executed_action_id)
+
+        events: list[TimelineEvent] = []
+        event = TimelineEvent(
+            stage="VERIFYING",
+            actor="VerificationAgent",
+            message=f"Verification status: {assessment.status}. {assessment.explanation}",
+            metadata={
+                "status": assessment.status,
+                "rollback_recommended": assessment.rollback_recommended,
+            },
+        )
+        events.append(event)
+
+        # Automated compensation rollback if degradation detected
+        if (
+            assessment.rollback_recommended
+            and state.remediation_plan
+            and state.remediation_plan.actions
+        ):
+            last_action = state.remediation_plan.actions[-1]
+            rb_res = await self.execution_runner.execute_rollback(last_action)
+            rb_event = TimelineEvent(
+                stage="FAILED",
+                actor="ExecutionRunner",
+                message=f"Executed automatic rollback for [{last_action.action_id}]: {rb_res.output}",
+            )
+            events.append(rb_event)
+            return {
+                "current_stage": "FAILED",
+                "verification": assessment,
+                "timeline": events,
+            }
+
+        next_stage = "RESOLVED" if assessment.status == "RECOVERED" else "INVESTIGATING"
+        return {
+            "current_stage": next_stage,
+            "verification": assessment,
+            "timeline": events,
+        }
+
     def route_critic_decision(self, state: IncidentState) -> str:
-        """Determines whether to loop back for more evidence or advance."""
+        """Determines whether to loop back for more evidence, advance to remediation, or complete."""
         critique = state.critique
         if (
             critique
@@ -223,6 +339,8 @@ class IncidentWorkflow:
                 f"LangGraph: Looping back to investigation (iteration {state.iteration_count}/{state.max_iterations})"
             )
             return "supervisor"
+        elif critique and critique.decision == "APPROVE":
+            return "remediation"
         return "complete"
 
     def build_graph(self):
@@ -238,6 +356,9 @@ class IncidentWorkflow:
         builder.add_node("join_evidence", self.join_evidence_node)
         builder.add_node("rca", self.rca_node)
         builder.add_node("critic", self.critic_node)
+        builder.add_node("remediation_planning", self.remediation_planning_node)
+        builder.add_node("execution", self.execution_node)
+        builder.add_node("verification", self.verification_node)
 
         # Flow edges: START -> supervisor -> parallel analysts -> join -> rca -> critic
         builder.add_edge(START, "supervisor")
@@ -260,9 +381,15 @@ class IncidentWorkflow:
             self.route_critic_decision,
             {
                 "supervisor": "supervisor",
+                "remediation": "remediation_planning",
                 "complete": END,
             },
         )
+
+        # Remediation lifecycle edges
+        builder.add_edge("remediation_planning", "execution")
+        builder.add_edge("execution", "verification")
+        builder.add_edge("verification", END)
 
         return builder.compile()
 

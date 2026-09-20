@@ -47,7 +47,7 @@ async def test_full_investigation_workflow_on_redis_pool_exhaustion():
     final_output = await graph.ainvoke(initial_state)
 
     # 5. Assertions on completed state
-    assert final_output["current_stage"] == "CRITIQUING"
+    assert final_output["current_stage"] == "RESOLVED"
 
     # Parallel evidence gathered from logs, metrics, and code diffs
     evidence = final_output["evidence"]
