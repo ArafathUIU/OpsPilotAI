@@ -7,6 +7,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.routes.health import router as health_router
+from apps.api.routes.incidents import router as incidents_router
+from apps.api.routes.webhooks import router as webhooks_router
 from src.core.config import get_settings
 from src.observability.logging import get_logger, setup_logging
 from src.persistence.session import check_db_health, init_db
@@ -82,9 +84,7 @@ async def log_requests_middleware(request: Request, call_next):
     return response
 
 
-# Include health and readiness router
+# Include routers
 app.include_router(health_router)
-
-# Mount API v1 router prefix placeholder
-api_v1_router = FastAPI()
-app.mount(settings.API_V1_STR, api_v1_router)
+app.include_router(incidents_router)
+app.include_router(webhooks_router)
