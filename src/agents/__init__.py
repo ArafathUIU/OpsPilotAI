@@ -4,6 +4,7 @@ from src.agents.base import BaseAgent
 from src.agents.code_analyst import CodeAnalystAgent
 from src.agents.critic import CriticAgent
 from src.agents.log_analyst import LogAnalystAgent
+from src.agents.memory_analyst import IncidentMemoryAgent
 from src.agents.metrics_analyst import MetricsAnalystAgent
 from src.agents.rca import RCAAgent
 from src.agents.supervisor import SupervisorAgent
@@ -14,6 +15,7 @@ __all__ = [
     "LogAnalystAgent",
     "MetricsAnalystAgent",
     "CodeAnalystAgent",
+    "IncidentMemoryAgent",
     "RCAAgent",
     "CriticAgent",
 ]
