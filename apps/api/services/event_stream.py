@@ -53,8 +53,9 @@ class EventBroker:
     async def subscribe(
         self,
         incident_id: str,
+        heartbeat_interval: float = 15.0,
     ) -> AsyncGenerator[dict[str, str], None]:
-        """Subscribes a client to the incident event stream, replaying recent history."""
+        """Subscribes a client to the incident event stream with history replay and heartbeats."""
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
         async with self._lock:
@@ -65,14 +66,24 @@ class EventBroker:
 
         try:
             while True:
-                record = await queue.get()
-                yield {
-                    "event": record["event"],
-                    "data": json.dumps(record["data"]),
-                }
-                # Check for termination events
-                if record["event"] in ["resolved", "failed", "escalated"]:
-                    break
+                try:
+                    record = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
+                    yield {
+                        "event": record["event"],
+                        "data": json.dumps(record["data"]),
+                    }
+                    # Check for termination events
+                    if record["event"] in ["resolved", "failed", "escalated"]:
+                        break
+                except TimeoutError:
+                    # Send periodic keepalive heartbeat ping
+                    yield {
+                        "event": "ping",
+                        "data": json.dumps({"timestamp": datetime.now(UTC).isoformat()}),
+                    }
+        except asyncio.CancelledError:
+            logger.debug(f"Client disconnected from SSE stream for [{incident_id}]")
+            raise
         finally:
             async with self._lock:
                 if queue in self._subscribers[incident_id]:
