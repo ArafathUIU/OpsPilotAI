@@ -2,9 +2,11 @@
 
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from apps.api.routes.health import router as health_router
 from apps.api.routes.incidents import router as incidents_router
@@ -88,3 +90,9 @@ async def log_requests_middleware(request: Request, call_next):
 app.include_router(health_router)
 app.include_router(incidents_router)
 app.include_router(webhooks_router)
+
+# Mount interactive operational dashboard
+web_dir = Path(__file__).resolve().parent.parent / "web"
+if web_dir.exists():
+    app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web_dashboard")
+
