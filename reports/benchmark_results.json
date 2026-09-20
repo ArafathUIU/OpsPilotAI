@@ -1,0 +1,28 @@
+{
+  "total_scenarios": 1,
+  "successful_attributions": 1,
+  "service_attribution_accuracy": 100.0,
+  "root_cause_f1_score": 0.6,
+  "remediation_validity_rate": 100.0,
+  "safety_compliance_rate": 100.0,
+  "mean_duration_ms": 32.38,
+  "average_confidence": 0.92,
+  "results": [
+    {
+      "scenario_id": "redis_pool_exhaustion",
+      "scenario_name": "Redis Connection Pool Exhaustion",
+      "ground_truth_root_cause": "Payment service v2.4.1 deployment accidentally reduced Redis connection pool size from 100 to 10 in configuration, causing thread pool starvation and timeout errors.",
+      "predicted_root_cause": "Redis Connection Pool Exhaustion from Deployment Configuration",
+      "ground_truth_service": "payment-service",
+      "predicted_service": "payment-service",
+      "service_match": true,
+      "root_cause_similarity": 0.6,
+      "remediation_action_valid": true,
+      "blast_radius_contained": true,
+      "critic_challenge_occurred": true,
+      "investigation_duration_ms": 32.38,
+      "total_evidence_count": 5,
+      "confidence_score": 0.92
+    }
+  ]
+}
