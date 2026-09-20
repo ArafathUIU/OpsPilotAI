@@ -6,6 +6,7 @@ from typing import Any
 from src.observability.logging import get_logger
 from src.tools.base import BaseTool, ToolResult
 from src.tools.code_tools import GetCommitDiffTool, GetRecentCommitsTool, GetRecentDeploymentsTool
+from src.tools.memory_tools import SearchIncidentMemoryTool
 from src.tools.telemetry_tools import GetServiceHealthTool, QueryLogsTool, QueryMetricsTool
 
 logger = get_logger(__name__)
@@ -34,6 +35,7 @@ class ToolRegistry:
         self.register(GetRecentDeploymentsTool())
         self.register(GetRecentCommitsTool())
         self.register(GetCommitDiffTool())
+        self.register(SearchIncidentMemoryTool())
 
     def register(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
