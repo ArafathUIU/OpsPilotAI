@@ -97,6 +97,17 @@ class SimulationEngine:
 
         success, message = self.active_scenario.apply_remediation(action_type, parameters)
 
+        # If scenario-specific remediation didn't trigger, handle standard infra actions as operational successes
+        if not success and action_type in ["scale_replicas", "clear_cache"]:
+            target = parameters.get("target_service", "service")
+            if action_type == "scale_replicas":
+                replicas = parameters.get("replicas", 1)
+                success = True
+                message = f"{target} replica count adjusted to {replicas} (did not remediate root cause)"
+            elif action_type == "clear_cache":
+                success = True
+                message = f"Transient cache cleared for {target} (did not remediate root cause)"
+
         if success and self.active_scenario.is_remediated:
             # Restore healthy status in topology
             for svc in self.active_scenario.ground_truth.affected_services:
