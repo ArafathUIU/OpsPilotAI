@@ -24,7 +24,9 @@ class PostmortemGenerator:
 
         # Duration calculations
         mttd_seconds = 180  # Default ~3 min simulated detection window
-        mttr_seconds = int((now - state.created_at).total_seconds())
+        is_resolved = state.current_stage == "RESOLVED"
+        resolved_at = now if is_resolved else None
+        mttr_seconds = int((now - state.created_at).total_seconds()) if is_resolved else 0
 
         # Root cause extraction
         selected_hypo = state.selected_hypothesis
@@ -39,7 +41,9 @@ class PostmortemGenerator:
         remediation_actions_text = []
         if state.remediation_plan and state.remediation_plan.actions:
             for act in state.remediation_plan.actions:
-                remediation_actions_text.append(f"- **{act.action_type}** on `{act.target_service}`: {act.description}")
+                remediation_actions_text.append(
+                    f"- **{act.action_type}** on `{act.target_service}`: {act.description}"
+                )
         remediation_summary = (
             "\n".join(remediation_actions_text)
             if remediation_actions_text
@@ -61,12 +65,19 @@ class PostmortemGenerator:
         )
 
         # Executive summary
-        exec_summary = (
-            f"On {state.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}, a {state.severity} incident "
-            f"impacted '{lead_service}'. OpsPilot AI diagnosed the root cause as '{selected_hypo.title if selected_hypo else 'Resource Contention'}' "
-            f"backed by {len(supporting_ids)} verified evidence sources. Remediation was executed and verified "
-            f"with total MTTR of {mttr_seconds}s."
-        )
+        if is_resolved:
+            exec_summary = (
+                f"On {state.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}, a {state.severity} incident "
+                f"impacted '{lead_service}'. OpsPilot AI diagnosed the root cause as '{selected_hypo.title if selected_hypo else 'Resource Contention'}' "
+                f"backed by {len(supporting_ids)} verified evidence sources. Remediation was executed and verified "
+                f"with total MTTR of {mttr_seconds}s."
+            )
+        else:
+            exec_summary = (
+                f"Incident '{state.title}' is currently in progress (stage: {state.current_stage}). "
+                f"Diagnostic analysis has isolated {len(supporting_ids)} evidence sources. "
+                f"Full remediation and recovery verification are ongoing."
+            )
 
         # Full Markdown synthesis
         markdown = self._render_markdown(
@@ -89,7 +100,7 @@ class PostmortemGenerator:
             status=state.current_stage,
             lead_service=lead_service,
             detected_at=state.created_at,
-            resolved_at=now,
+            resolved_at=resolved_at,
             mttd_seconds=mttd_seconds,
             mttr_seconds=mttr_seconds,
             executive_summary=exec_summary,
