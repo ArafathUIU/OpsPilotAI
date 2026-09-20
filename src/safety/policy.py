@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 DESTRUCTIVE_PATTERNS = re.compile(
-    r"(?i)\b(drop\s+table|drop\s+database|truncate|delete\s+from|rm\s+-rf|format\s+|flushall|flushdb)\b"
+    r"(?i)\b(drop\s+(?:table|database|schema|view|index)|truncate(?:\s+table)?|delete\s+from|rm\s+-(?:r|f|rf|fr)\b|format\s+[a-z]:|flushall|flushdb|alter\s+table\s+\S+\s+drop)\b"
 )
 
 BASE_ACTION_RISK: dict[ActionType, float] = {
@@ -42,6 +42,23 @@ class RiskPolicyEngine:
 
     def detect_destructive_payload(self, parameters: dict[str, Any]) -> bool:
         """Scans parameters for catastrophic or destructive commands."""
+        def _extract_strings(val: Any) -> list[str]:
+            strings: list[str] = []
+            if isinstance(val, str):
+                strings.append(val)
+            elif isinstance(val, dict):
+                for k, v in val.items():
+                    strings.append(str(k))
+                    strings.extend(_extract_strings(v))
+            elif isinstance(val, (list, tuple, set)):
+                for item in val:
+                    strings.extend(_extract_strings(item))
+            return strings
+
+        for s in _extract_strings(parameters):
+            if DESTRUCTIVE_PATTERNS.search(s):
+                return True
+
         raw_dump = json.dumps(parameters)
         return bool(DESTRUCTIVE_PATTERNS.search(raw_dump))
 
