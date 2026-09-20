@@ -110,6 +110,9 @@ class EpisodicMemoryManager:
         If a service-specific filter returns no matches, falls back to cross-service
         semantic search to surface analogous architectural failure patterns.
         """
+        if not query or not query.strip():
+            return []
+
         if not self._seeded:
             await self.seed_default_memories()
 
