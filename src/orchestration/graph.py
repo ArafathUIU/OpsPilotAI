@@ -7,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 from src.agents.code_analyst import CodeAnalystAgent
 from src.agents.critic import CriticAgent
 from src.agents.log_analyst import LogAnalystAgent
+from src.agents.memory_analyst import IncidentMemoryAgent
 from src.agents.metrics_analyst import MetricsAnalystAgent
 from src.agents.rca import RCAAgent
 from src.agents.supervisor import SupervisorAgent
@@ -29,6 +30,7 @@ class IncidentWorkflow:
         log_analyst: LogAnalystAgent | None = None,
         metrics_analyst: MetricsAnalystAgent | None = None,
         code_analyst: CodeAnalystAgent | None = None,
+        memory_analyst: IncidentMemoryAgent | None = None,
         rca: RCAAgent | None = None,
         critic: CriticAgent | None = None,
     ) -> None:
@@ -36,6 +38,7 @@ class IncidentWorkflow:
         self.log_analyst = log_analyst or LogAnalystAgent()
         self.metrics_analyst = metrics_analyst or MetricsAnalystAgent()
         self.code_analyst = code_analyst or CodeAnalystAgent()
+        self.memory_analyst = memory_analyst or IncidentMemoryAgent()
         self.rca = rca or RCAAgent()
         self.critic = critic or CriticAgent()
 
@@ -129,6 +132,30 @@ class IncidentWorkflow:
             "timeline": [event],
         }
 
+    async def memory_analyst_node(self, state: IncidentState) -> dict[str, Any]:
+        """Investigate historical postmortems and episodic memory."""
+        target_service = (
+            state.affected_services[0] if state.affected_services else "payment-service"
+        )
+        task = InvestigationTask(
+            task_id="task-mem",
+            agent_type="memory_analyst",
+            target_service=target_service,
+            query_intent=f"Historical postmortems matching {state.title} on {target_service}",
+        )
+        logger.info(f"LangGraph: Memory Analyst searching past incidents for [{target_service}]")
+        output = await self.memory_analyst.investigate(task)
+
+        event = TimelineEvent(
+            stage="INVESTIGATING",
+            actor="IncidentMemoryAgent",
+            message=f"Memory analysis completed. Found {len(output.evidence_items)} historical evidence items.",
+        )
+        return {
+            "evidence": output.evidence_items,
+            "timeline": [event],
+        }
+
     async def join_evidence_node(self, state: IncidentState) -> dict[str, Any]:
         """Consolidate evidence collected across parallel analyst branches."""
         logger.info(f"LangGraph: Evidence joined. Total evidence items: {len(state.evidence)}")
@@ -207,6 +234,7 @@ class IncidentWorkflow:
         builder.add_node("log_analyst", self.log_analyst_node)
         builder.add_node("metrics_analyst", self.metrics_analyst_node)
         builder.add_node("code_analyst", self.code_analyst_node)
+        builder.add_node("memory_analyst", self.memory_analyst_node)
         builder.add_node("join_evidence", self.join_evidence_node)
         builder.add_node("rca", self.rca_node)
         builder.add_node("critic", self.critic_node)
@@ -216,10 +244,12 @@ class IncidentWorkflow:
         builder.add_edge("supervisor", "log_analyst")
         builder.add_edge("supervisor", "metrics_analyst")
         builder.add_edge("supervisor", "code_analyst")
+        builder.add_edge("supervisor", "memory_analyst")
 
         builder.add_edge("log_analyst", "join_evidence")
         builder.add_edge("metrics_analyst", "join_evidence")
         builder.add_edge("code_analyst", "join_evidence")
+        builder.add_edge("memory_analyst", "join_evidence")
 
         builder.add_edge("join_evidence", "rca")
         builder.add_edge("rca", "critic")
