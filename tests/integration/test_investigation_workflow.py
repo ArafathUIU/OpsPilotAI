@@ -6,6 +6,7 @@ from simulator.engine import default_simulator
 from src.agents.code_analyst import CodeAnalystAgent
 from src.agents.critic import CriticAgent
 from src.agents.log_analyst import LogAnalystAgent
+from src.agents.memory_analyst import IncidentMemoryAgent
 from src.agents.metrics_analyst import MetricsAnalystAgent
 from src.agents.rca import RCAAgent
 from src.agents.supervisor import SupervisorAgent
@@ -28,6 +29,7 @@ async def test_full_investigation_workflow_on_redis_pool_exhaustion():
         log_analyst=LogAnalystAgent(router=router),
         metrics_analyst=MetricsAnalystAgent(router=router),
         code_analyst=CodeAnalystAgent(router=router),
+        memory_analyst=IncidentMemoryAgent(router=router),
         rca=RCAAgent(router=router),
         critic=CriticAgent(router=router),
     )
@@ -54,6 +56,7 @@ async def test_full_investigation_workflow_on_redis_pool_exhaustion():
     assert "log" in evidence_types
     assert "metric" in evidence_types
     assert "code" in evidence_types
+    assert "memory" in evidence_types
 
     # RCA generated hypotheses citing valid evidence IDs
     hypotheses = final_output["hypotheses"]
