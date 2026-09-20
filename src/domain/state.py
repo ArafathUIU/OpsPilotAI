@@ -93,6 +93,77 @@ class RCAAgentOutput(BaseModel):
     confidence_rationale: str
 
 
+ActionType = Literal[
+    "restart_service",
+    "rollback_deployment",
+    "scale_replicas",
+    "modify_configuration",
+    "run_query",
+    "clear_cache",
+]
+
+RiskTier = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+
+
+class RemediationAction(BaseModel):
+    """Concrete remediation operation planned by the Remediation Agent."""
+
+    action_id: str = Field(description="Unique action ID e.g. ACT-ROLLBACK-01")
+    action_type: ActionType
+    target_service: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    description: str
+    rationale: str
+    rollback_plan: str
+    risk_tier: RiskTier = "MEDIUM"
+    risk_score: float = Field(ge=0.0, le=1.0, default=0.5)
+    requires_approval: bool = True
+    estimated_downtime_seconds: int = 0
+    idempotency_key: str = ""
+
+
+class RemediationPlan(BaseModel):
+    """Ordered remediation actions formulated from validated root causes."""
+
+    incident_id: str
+    hypothesis_id: str
+    actions: list[RemediationAction]
+    summary: str
+    prevention_recommendations: list[str] = Field(default_factory=list)
+
+
+class ApprovalDecision(BaseModel):
+    """Human or automated policy decision on a pending remediation action."""
+
+    action_id: str
+    decision: Literal["APPROVED", "REJECTED", "MODIFIED"]
+    decided_by: str  # user id or 'policy_engine:auto'
+    reason: str
+    modified_parameters: dict[str, Any] | None = None
+    decided_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ActionExecutionResult(BaseModel):
+    """Audit record of a dispatched remediation tool run."""
+
+    action_id: str
+    status: Literal["SUCCESS", "FAILED", "ROLLED_BACK"]
+    output: str
+    error_message: str | None = None
+    duration_ms: float = 0.0
+    executed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class VerificationAssessment(BaseModel):
+    """Post-remediation empirical assessment evaluating health recovery."""
+
+    status: Literal["RECOVERED", "PARTIALLY_RECOVERED", "UNCHANGED", "DEGRADED"]
+    metrics_comparison: dict[str, Any] = Field(default_factory=dict)
+    service_statuses: dict[str, str] = Field(default_factory=dict)
+    rollback_recommended: bool = False
+    explanation: str
+
+
 class IncidentState(BaseModel):
     """Primary LangGraph state representing the shared working memory across agents."""
 
@@ -109,6 +180,13 @@ class IncidentState(BaseModel):
     hypotheses: list[Hypothesis] = Field(default_factory=list)
     selected_hypothesis: Hypothesis | None = None
     critique: CritiqueResult | None = None
+
+    # Phase 5: Remediation, Governance, Execution & Verification
+    remediation_plan: RemediationPlan | None = None
+    pending_approvals: list[RemediationAction] = Field(default_factory=list)
+    approval_decisions: list[ApprovalDecision] = Field(default_factory=list)
+    execution_results: list[ActionExecutionResult] = Field(default_factory=list)
+    verification: VerificationAssessment | None = None
 
     timeline: Annotated[list[TimelineEvent], operator.add] = Field(default_factory=list)
     errors: Annotated[list[str], operator.add] = Field(default_factory=list)
