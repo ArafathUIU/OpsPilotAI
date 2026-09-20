@@ -1,8 +1,6 @@
-"""Telemetry tools for querying logs, metrics, and service health."""
-
 from typing import Any
 
-from simulator.engine import default_simulator
+from simulator.engine import SimulationEngine, default_simulator
 from src.tools.base import BaseTool
 
 
@@ -10,6 +8,9 @@ class QueryLogsTool(BaseTool):
     name = "query_logs"
     description = "Queries structured application logs filtered by service, time window, log level, and message pattern."
     required_role = "VIEWER"
+
+    def __init__(self, simulator: SimulationEngine | None = None) -> None:
+        self.simulator = simulator or default_simulator
 
     async def _run(
         self,
@@ -19,7 +20,7 @@ class QueryLogsTool(BaseTool):
         limit: int = 50,
         **kwargs: Any,
     ) -> list[dict]:
-        records = default_simulator.telemetry_store.query_logs(
+        records = self.simulator.telemetry_store.query_logs(
             service=service,
             pattern=pattern,
             level=level,
@@ -33,6 +34,9 @@ class QueryMetricsTool(BaseTool):
     description = "Queries time-series metric data points (latency, error rate, CPU, active connections) by metric name."
     required_role = "VIEWER"
 
+    def __init__(self, simulator: SimulationEngine | None = None) -> None:
+        self.simulator = simulator or default_simulator
+
     async def _run(
         self,
         metric_name: str,
@@ -40,7 +44,7 @@ class QueryMetricsTool(BaseTool):
         limit: int = 100,
         **kwargs: Any,
     ) -> list[dict]:
-        data_points = default_simulator.telemetry_store.query_metrics(
+        data_points = self.simulator.telemetry_store.query_metrics(
             metric_name=metric_name,
             service=service,
             limit=limit,
@@ -55,15 +59,18 @@ class GetServiceHealthTool(BaseTool):
     )
     required_role = "VIEWER"
 
+    def __init__(self, simulator: SimulationEngine | None = None) -> None:
+        self.simulator = simulator or default_simulator
+
     async def _run(self, service: str, **kwargs: Any) -> dict:
-        node = default_simulator.topology.get_service(service)
+        node = self.simulator.topology.get_service(service)
         if not node:
-            return {"service": service, "found": False, "status": "UNKNOWN"}
+            return {"service": service, "status": "UNKNOWN", "dependencies": []}
         return {
             "service": node.name,
             "status": node.status,
             "tier": node.tier,
-            "version": node.version,
             "dependencies": node.dependencies,
-            "upstream_dependents": default_simulator.topology.get_upstream_dependents(service),
+            "upstream_dependents": self.simulator.topology.get_upstream_dependents(service),
+            "version": node.version,
         }
