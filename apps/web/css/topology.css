@@ -1,0 +1,171 @@
+/* ==========================================================================
+   OpsPilot AI — Service Topology Graph Styles & Animations
+   ========================================================================== */
+
+.topology-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: radial-gradient(circle at 50% 50%, rgba(19, 24, 38, 0.4) 0%, rgba(7, 9, 14, 0.95) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.topology-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  z-index: 10;
+}
+
+.topology-legend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-dot.healthy { background: var(--success-emerald); box-shadow: 0 0 6px var(--success-emerald); }
+.legend-dot.degraded { background: var(--sev2-amber); box-shadow: 0 0 6px var(--sev2-amber); }
+.legend-dot.critical { background: var(--sev1-crimson); box-shadow: 0 0 6px var(--sev1-crimson); }
+.legend-dot.blast { background: #ec4899; box-shadow: 0 0 6px #ec4899; }
+
+.topology-canvas-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  position: relative;
+}
+
+.topology-svg {
+  width: 100%;
+  max-width: 900px;
+  height: 100%;
+  max-height: 500px;
+  overflow: visible;
+}
+
+/* Node Elements */
+.topo-node {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.topo-node:hover {
+  transform: scale(1.04);
+}
+
+.topo-node-rect {
+  fill: #0f1422;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1.5px;
+  rx: 10px;
+  ry: 10px;
+  transition: all 0.3s;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6));
+}
+
+.topo-node.healthy .topo-node-rect {
+  stroke: rgba(16, 185, 129, 0.4);
+}
+
+.topo-node.degraded .topo-node-rect {
+  stroke: var(--sev2-amber);
+  fill: #1a160d;
+}
+
+.topo-node.critical .topo-node-rect {
+  stroke: var(--sev1-crimson);
+  fill: #1a0d14;
+  filter: drop-shadow(0 0 16px var(--sev1-glow));
+  animation: crit-pulse 2s infinite;
+}
+
+@keyframes crit-pulse {
+  0%, 100% { stroke: var(--sev1-crimson); }
+  50% { stroke: rgba(255, 51, 102, 0.4); }
+}
+
+.topo-node.in-blast .topo-node-rect {
+  stroke: #ec4899;
+  stroke-dasharray: 4 2;
+  animation: blast-dash 1.5s linear infinite;
+}
+
+@keyframes blast-dash {
+  to { stroke-dashoffset: -12; }
+}
+
+.topo-node-title {
+  fill: #f8fafc;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+
+.topo-node-meta {
+  fill: #94a3b8;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.topo-node-status-circle {
+  r: 5px;
+  cx: 18px;
+  cy: 18px;
+}
+
+.topo-node.healthy .topo-node-status-circle { fill: var(--success-emerald); }
+.topo-node.degraded .topo-node-status-circle { fill: var(--sev2-amber); }
+.topo-node.critical .topo-node-status-circle { fill: var(--sev1-crimson); }
+
+/* Directed Edge Links */
+.topo-edge {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.15);
+  stroke-width: 2px;
+  stroke-linecap: round;
+  transition: stroke 0.3s;
+}
+
+.topo-edge.active {
+  stroke: var(--brand-primary);
+  stroke-dasharray: 6 6;
+  animation: flow 1s linear infinite;
+}
+
+.topo-edge.critical-flow {
+  stroke: var(--sev1-crimson);
+  stroke-dasharray: 6 6;
+  animation: flow 0.6s linear infinite;
+}
+
+@keyframes flow {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* Arrowheads */
+marker#arrow-default path { fill: rgba(255, 255, 255, 0.25); }
+marker#arrow-active path { fill: var(--brand-primary); }
+marker#arrow-critical path { fill: var(--sev1-crimson); }
