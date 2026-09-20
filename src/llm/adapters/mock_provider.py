@@ -12,7 +12,10 @@ from src.domain.state import (
     Hypothesis,
     InvestigationTask,
     RCAAgentOutput,
+    RemediationAction,
+    RemediationPlan,
     SupervisorPlan,
+    VerificationAssessment,
 )
 from src.llm.provider import LLMProvider, LLMResponse, TokenUsage
 
@@ -201,6 +204,44 @@ class MockLLMProvider(LLMProvider):
                 ),
                 counter_hypotheses=[],
                 required_evidence_queries=[],
+            )
+
+        elif response_model is RemediationPlan:
+            parsed_obj = RemediationPlan(
+                incident_id="inc-redis-test-01",
+                hypothesis_id="HYP-01",
+                actions=[
+                    RemediationAction(
+                        action_id="ACT-ROLLBACK-01",
+                        action_type="rollback_deployment",
+                        target_service="payment-service",
+                        parameters={"target_version": "v2.4.0", "previous_version": "v2.4.1"},
+                        description="Rollback payment-service from defective v2.4.1 release to stable v2.4.0",
+                        rationale="Restores original redis max_connections=100 configuration and terminates connection acquisition timeouts",
+                        rollback_plan="Re-apply deployment v2.4.1 if rollback exhibits unanticipated downstream regressions",
+                        risk_tier="HIGH",
+                        risk_score=0.70,
+                        requires_approval=True,
+                        estimated_downtime_seconds=15,
+                    )
+                ],
+                summary="Execute targeted deployment rollback to revert defective pool configuration",
+                prevention_recommendations=[
+                    "Implement automated load tests against Redis connection pool sizing in staging",
+                    "Add CI/CD configuration schema linting on all service YAML manifests",
+                ],
+            )
+
+        elif response_model is VerificationAssessment:
+            parsed_obj = VerificationAssessment(
+                status="RECOVERED",
+                metrics_comparison={
+                    "p95_latency_ms": {"before": 2820.0, "after": 245.0, "status": "HEALTHY"},
+                    "error_rate_percent": {"before": 65.0, "after": 0.0, "status": "HEALTHY"},
+                },
+                service_statuses={"payment-service": "HEALTHY"},
+                rollback_recommended=False,
+                explanation="P95 latency dropped below 250ms baseline and error rate stabilized at 0.0% following deployment rollback.",
             )
         else:
             # Fallback instantiation
