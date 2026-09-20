@@ -98,9 +98,14 @@ class IncidentService:
 
         self._incidents[incident_id] = state
 
-        # Launch background investigation pipeline
-        task = asyncio.create_task(self._run_investigation(incident_id))
-        self._tasks[incident_id] = task
+        # Launch background investigation pipeline if an event loop is running
+        try:
+            loop = asyncio.get_running_loop()
+            task = loop.create_task(self._run_investigation(incident_id))
+            self._tasks[incident_id] = task
+        except RuntimeError:
+            # Synchronous context or unit test without running loop
+            pass
 
         logger.info(f"Incident [{incident_id}] initialized. Background investigation launched.")
         return self._to_incident_response(state)
@@ -179,8 +184,27 @@ class IncidentService:
         state = self._incidents.get(incident_id)
         return self._to_incident_response(state) if state else None
 
-    def list_incidents(self) -> list[IncidentResponse]:
-        return [self._to_incident_response(s) for s in self._incidents.values()]
+    def list_incidents(
+        self,
+        severity: str | None = None,
+        stage: str | None = None,
+        service: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[IncidentResponse]:
+        results = list(self._incidents.values())
+        if severity:
+            results = [s for s in results if s.severity.upper() == severity.upper()]
+        if stage:
+            results = [s for s in results if s.current_stage.upper() == stage.upper()]
+        if service:
+            results = [
+                s for s in results if service.lower() in [svc.lower() for svc in s.affected_services]
+            ]
+        # Order by created_at descending
+        results.sort(key=lambda s: s.created_at, reverse=True)
+        paginated = results[offset : offset + limit]
+        return [self._to_incident_response(s) for s in paginated]
 
     def get_evidence(self, incident_id: str) -> list[EvidenceResponse]:
         state = self._incidents.get(incident_id)
@@ -237,8 +261,12 @@ class IncidentService:
         if not state or not state.remediation_plan:
             return []
 
+        decisions_by_action = {d.action_id: d for d in state.approval_decisions}
+
         approvals: list[ApprovalRequestResponse] = []
         for a in state.remediation_plan.actions:
+            dec = decisions_by_action.get(a.action_id)
+            status_val = dec.decision if dec else ("PENDING" if a.requires_approval else "AUTO_APPROVED")
             approvals.append(
                 ApprovalRequestResponse(
                     id=f"appr-{a.action_id}",
@@ -247,11 +275,14 @@ class IncidentService:
                     action_type=a.action_type,
                     target_service=a.target_service,
                     risk_level=a.risk_tier,
-                    status="PENDING" if a.requires_approval else "AUTO_APPROVED",
+                    status=status_val,
                     description=a.description,
                     rollback_plan=a.rollback_plan,
                     parameters=a.parameters,
                     created_at=state.created_at,
+                    responded_at=dec.decided_at if dec else None,
+                    approver_id=dec.decided_by if dec else None,
+                    comment=dec.reason if dec else None,
                 )
             )
         return approvals
@@ -275,6 +306,16 @@ class IncidentService:
         if not target_action:
             raise ValueError(f"Approval {approval_id} not found in incident {incident_id}")
 
+        # Guard against duplicate or conflicting approval submissions
+        existing_decision = next(
+            (d for d in state.approval_decisions if d.action_id == target_action.action_id),
+            None,
+        )
+        if existing_decision:
+            raise ValueError(
+                f"Action [{target_action.action_id}] was already {existing_decision.decision} by [{existing_decision.decided_by}]"
+            )
+
         # Enforce RBAC authorization
         authorized, msg = self.policy_engine.authorize_approval(
             target_action, request.approver_role
@@ -293,13 +334,17 @@ class IncidentService:
         state.approval_decisions.append(decision)
 
         # Notify event stream
-        asyncio.create_task(
-            self.event_broker.publish(
-                incident_id=incident_id,
-                event_type="approval_decision",
-                payload=decision.model_dump(mode="json"),
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                self.event_broker.publish(
+                    incident_id=incident_id,
+                    event_type="approval_decision",
+                    payload=decision.model_dump(mode="json"),
+                )
             )
-        )
+        except RuntimeError:
+            pass
 
         return ApprovalRequestResponse(
             id=approval_id,

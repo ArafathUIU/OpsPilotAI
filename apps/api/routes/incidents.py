@@ -40,10 +40,22 @@ async def create_incident(request: IncidentCreateRequest) -> IncidentResponse:
 @router.get(
     "",
     response_model=list[IncidentResponse],
-    summary="List all incidents",
+    summary="List all incidents with optional filtering and pagination",
 )
-async def list_incidents() -> list[IncidentResponse]:
-    return default_incident_service.list_incidents()
+async def list_incidents(
+    severity: str | None = None,
+    stage: str | None = None,
+    service: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[IncidentResponse]:
+    return default_incident_service.list_incidents(
+        severity=severity,
+        stage=stage,
+        service=service,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(
