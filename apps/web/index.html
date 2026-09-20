@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="OpsPilot AI - Autonomous Multi-Agent Incident Response & Root Cause Analysis Platform">
+  <title>OpsPilot AI — Autonomous Incident Response & RCA Platform</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Core Stylesheets -->
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/topology.css">
+</head>
+<body>
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-logo">
+        <div class="logo-icon-wrap">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          <span class="logo-pulse"></span>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">OpsPilot <span class="brand-gradient">AI</span></span>
+          <span class="brand-subtitle">Autonomous Incident Response Platform</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-stats">
+      <div class="stat-pill" id="healthPill">
+        <span class="status-dot healthy"></span>
+        <span class="stat-label">System:</span>
+        <span class="stat-value" id="systemHealthText">Operational</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-label">Active Incidents:</span>
+        <span class="stat-value accent-crit" id="activeIncidentsCount">0</span>
+      </div>
+      <div class="stat-pill" id="ssePill">
+        <span class="status-dot" id="sseDot"></span>
+        <span class="stat-label">Stream:</span>
+        <span class="stat-value" id="sseStatusText">Connecting...</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn btn-secondary" id="btnSimulateScenario" title="Trigger a simulated production incident scenario">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        Simulate Scenario
+      </button>
+      <button class="btn btn-primary" id="btnNewIncident" title="Create a new manual incident">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        New Incident
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Layout Container -->
+  <main class="app-layout">
+    <!-- Left Panel: Incident Explorer -->
+    <aside class="sidebar-panel">
+      <div class="sidebar-header">
+        <div class="sidebar-title-wrap">
+          <h2 class="sidebar-title">Incident Feed</h2>
+          <span class="badge badge-subtle" id="totalIncidentsBadge">0 Total</span>
+        </div>
+        <!-- Search & Filter Controls -->
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="incidentSearchInput" placeholder="Filter by title, service, ID..." autocomplete="off">
+        </div>
+        <div class="filter-chips" id="filterChips">
+          <button class="chip active" data-filter="all">All</button>
+          <button class="chip" data-filter="SEV1">SEV1</button>
+          <button class="chip" data-filter="active">Active</button>
+          <button class="chip" data-filter="awaiting">Approval</button>
+          <button class="chip" data-filter="RESOLVED">Resolved</button>
+        </div>
+      </div>
+
+      <!-- Incident List -->
+      <div class="incident-list" id="incidentListContainer">
+        <div class="empty-feed">
+          <div class="empty-spinner"></div>
+          <p>Loading incidents...</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Stage: Incident War Room -->
+    <section class="warroom-panel" id="warroomPanel">
+      <!-- Active Incident Header -->
+      <div class="warroom-header" id="warroomHeader">
+        <div class="warroom-header-top">
+          <div class="incident-meta-wrap">
+            <div class="incident-badge-row">
+              <span class="badge badge-sev1" id="activeSevBadge">SEV1</span>
+              <span class="badge badge-stage" id="activeStageBadge">CREATED</span>
+              <span class="incident-id-tag" id="activeIncidentIdTag">INC-INIT</span>
+              <span class="incident-time-tag" id="activeIncidentTime">Just now</span>
+            </div>
+            <h1 class="incident-headline" id="activeIncidentTitle">Select or trigger an incident to enter War Room</h1>
+          </div>
+          <div class="incident-services" id="activeServicesList">
+            <!-- Service Badges injected dynamically -->
+          </div>
+        </div>
+
+        <!-- Stage Progress Stepper -->
+        <div class="pipeline-stepper" id="pipelineStepper">
+          <div class="step-node active" data-stage="CREATED">
+            <div class="step-circle">1</div>
+            <span class="step-label">Detected</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-node" data-stage="INVESTIGATING">
+            <div class="step-circle">2</div>
+            <span class="step-label">Investigating</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-node" data-stage="HYPOTHESIZING">
+            <div class="step-circle">3</div>
+            <span class="step-label">RCA & Critic</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-node" data-stage="AWAITING_APPROVAL">
+            <div class="step-circle">4</div>
+            <span class="step-label">HITL Gating</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-node" data-stage="REMEDIATING">
+            <div class="step-circle">5</div>
+            <span class="step-label">Remediating</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-node" data-stage="VERIFYING">
+            <div class="step-circle">6</div>
+            <span class="step-label">Verifying</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-node" data-stage="RESOLVED">
+            <div class="step-circle">7</div>
+            <span class="step-label">Resolved</span>
+          </div>
+        </div>
+
+        <!-- Dynamic Approval Banner (shown if HITL approval required) -->
+        <div class="approval-alert-banner" id="approvalAlertBanner" style="display: none;">
+          <div class="alert-content">
+            <div class="alert-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div class="alert-text">
+              <strong id="approvalBannerTitle">Remediation Action Requires Human Authorization</strong>
+              <p id="approvalBannerDesc">Automated remediation paused due to high risk level / blast radius.</p>
+            </div>
+          </div>
+          <button class="btn btn-warning btn-sm" id="btnReviewApproval">Review Action</button>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <nav class="warroom-tabs" id="warroomTabs">
+          <button class="tab-btn active" data-tab="stream">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Agent War Room
+            <span class="tab-pill-pulse"></span>
+          </button>
+          <button class="tab-btn" data-tab="topology">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="2" width="6" height="6" rx="1"/>
+              <rect x="16" y="2" width="6" height="6" rx="1"/>
+              <rect x="9" y="16" width="6" height="6" rx="1"/>
+              <path d="M5 8v4h14V8M12 12v4"/>
+            </svg>
+            Service Topology
+          </button>
+          <button class="tab-btn" data-tab="evidence">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            Evidence Inspector
+            <span class="badge badge-subtle" id="evidenceCountBadge">0</span>
+          </button>
+          <button class="tab-btn" data-tab="hypotheses">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            Root Cause & Critic
+            <span class="badge badge-subtle" id="hypothesesCountBadge">0</span>
+          </button>
+          <button class="tab-btn" data-tab="postmortem">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <circle cx="12" cy="14" r="3"/>
+            </svg>
+            Postmortem Report
+          </button>
+        </nav>
+      </div>
+
+      <!-- Tab Content Views -->
+      <div class="warroom-body">
+        <!-- Tab 1: Agent Streaming War Room -->
+        <div class="tab-pane active" id="paneStream">
+          <div class="stream-toolbar">
+            <div class="stream-title-wrap">
+              <span class="live-dot"></span>
+              <span class="stream-title">Live Cognitive Pipeline Stream</span>
+            </div>
+            <div class="stream-controls">
+              <label class="toggle-wrap">
+                <input type="checkbox" id="autoScrollToggle" checked>
+                <span class="toggle-text">Auto-Scroll</span>
+              </label>
+              <button class="btn btn-ghost btn-sm" id="btnClearStream">Clear</button>
+            </div>
+          </div>
+          <div class="stream-messages" id="streamMessagesContainer">
+            <div class="stream-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 14 14"/>
+              </svg>
+              <p>Select an incident to view live agent reasoning and collaboration timeline.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Service Topology Diagram -->
+        <div class="tab-pane" id="paneTopology">
+          <div class="topology-container">
+            <div class="topology-toolbar">
+              <div class="topology-legend">
+                <span class="legend-item"><span class="legend-dot healthy"></span> Healthy</span>
+                <span class="legend-item"><span class="legend-dot degraded"></span> Degraded</span>
+                <span class="legend-item"><span class="legend-dot critical"></span> Critical</span>
+                <span class="legend-item"><span class="legend-dot blast"></span> In Blast Radius</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="btnRefreshTopology">Refresh Status</button>
+            </div>
+            <div class="topology-canvas-wrap" id="topologyCanvasWrap">
+              <svg class="topology-svg" id="topologySvg" viewBox="0 0 900 500">
+                <!-- SVG diagram rendered by topology.js -->
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Evidence Inspector -->
+        <div class="tab-pane" id="paneEvidence">
+          <div class="evidence-wrapper">
+            <div class="evidence-subtabs">
+              <button class="subtab-btn active" data-subtab="logs">Logs (<span id="logCount">0</span>)</button>
+              <button class="subtab-btn" data-subtab="metrics">Metrics (<span id="metricCount">0</span>)</button>
+              <button class="subtab-btn" data-subtab="diffs">Code Diffs (<span id="diffCount">0</span>)</button>
+              <button class="subtab-btn" data-subtab="memory">Historical Memory (<span id="memoryCount">0</span>)</button>
+            </div>
+            <div class="evidence-view-container" id="evidenceViewContainer">
+              <div class="evidence-pane active" id="subpaneLogs">
+                <div class="terminal-view" id="logsTerminal">
+                  <div class="terminal-bar">
+                    <span class="term-dot red"></span>
+                    <span class="term-dot yellow"></span>
+                    <span class="term-dot green"></span>
+                    <span class="term-title">Aggregated Error Logs</span>
+                  </div>
+                  <pre class="terminal-content" id="terminalLogsContent">No log evidence collected yet.</pre>
+                </div>
+              </div>
+              <div class="evidence-pane" id="subpaneMetrics">
+                <div class="metrics-grid" id="metricsGrid">
+                  <!-- Rendered dynamically -->
+                </div>
+              </div>
+              <div class="evidence-pane" id="subpaneDiffs">
+                <div class="diff-container" id="diffsContainer">
+                  <!-- Rendered dynamically -->
+                </div>
+              </div>
+              <div class="evidence-pane" id="subpaneMemory">
+                <div class="memory-grid" id="memoryGrid">
+                  <!-- Rendered dynamically -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Hypotheses & Critic Verification -->
+        <div class="tab-pane" id="paneHypotheses">
+          <div class="hypotheses-container" id="hypothesesContainer">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Tab 5: Postmortem Report -->
+        <div class="tab-pane" id="panePostmortem">
+          <div class="postmortem-container">
+            <div class="postmortem-toolbar">
+              <div class="report-meta-stats" id="reportMetaStats">
+                <!-- MTTD / MTTR badges -->
+              </div>
+              <div class="report-actions">
+                <button class="btn btn-secondary btn-sm" id="btnExportMarkdown">
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Export Markdown
+                </button>
+              </div>
+            </div>
+            <div class="postmortem-content" id="postmortemContent">
+              <div class="empty-state">
+                <p>Postmortem report will be generated when the incident resolution is complete.</p>
+                <button class="btn btn-primary btn-sm" id="btnGenerateReportNow" style="margin-top: 12px;">Generate Preliminary Report</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: Human In The Loop (HITL) Approval -->
+  <div class="modal-overlay" id="approvalModal" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="risk-badge-lg critical" id="modalRiskBadge">CRITICAL RISK</div>
+          <div>
+            <h3 class="modal-title">Authorize Remediation Action</h3>
+            <span class="modal-subtitle" id="modalActionId">ACT-9201</span>
+          </div>
+        </div>
+        <button class="modal-close" id="btnCloseApprovalModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="approval-card-grid">
+          <div class="info-block">
+            <span class="info-label">Action Type</span>
+            <strong class="info-value accent-cyan" id="modalActionType">rollback_deployment</strong>
+          </div>
+          <div class="info-block">
+            <span class="info-label">Target Service</span>
+            <strong class="info-value" id="modalTargetService">payment-service</strong>
+          </div>
+          <div class="info-block full-width">
+            <span class="info-label">Action Description & Rationale</span>
+            <p class="info-desc" id="modalActionDescription">Rollback payment-service to commit 4a8e2b to resolve connection pool leak.</p>
+          </div>
+          <div class="info-block full-width">
+            <span class="info-label">Estimated Blast Radius</span>
+            <div class="blast-tags" id="modalBlastRadius">
+              <!-- Service tags -->
+            </div>
+          </div>
+          <div class="info-block full-width">
+            <span class="info-label">Rollback Safeguard Plan</span>
+            <code class="code-block-sm" id="modalRollbackPlan">Re-apply deployment helm chart v2.4.1 if health probes fail within 120s</code>
+          </div>
+          <div class="info-block full-width">
+            <span class="info-label">Action Parameters (JSON)</span>
+            <textarea class="param-editor" id="modalParamEditor" rows="4"></textarea>
+          </div>
+          <div class="info-block full-width">
+            <span class="info-label">Operator Decision Rationale</span>
+            <input type="text" class="input-text" id="modalDecisionReason" placeholder="e.g. Verified safe against database replica">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btnRejectAction">Reject Action</button>
+        <button class="btn btn-primary" id="btnApproveAction">Approve & Execute</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Simulate Scenario -->
+  <div class="modal-overlay" id="simulateModal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Simulate Production Incident</h3>
+        <button class="modal-close" id="btnCloseSimulateModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-intro">Choose one of the 10 pre-configured failure scenarios to inject simulated telemetry and activate autonomous multi-agent response:</p>
+        <div class="scenario-grid" id="scenarioGrid">
+          <!-- Injected dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: New Manual Incident -->
+  <div class="modal-overlay" id="newIncidentModal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Trigger Manual Incident</h3>
+        <button class="modal-close" id="btnCloseNewIncidentModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="newIncidentForm">
+          <div class="form-group">
+            <label for="newIncTitle">Incident Title</label>
+            <input type="text" id="newIncTitle" class="input-text" placeholder="e.g. High latency in payment checkout" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group half">
+              <label for="newIncSeverity">Severity</label>
+              <select id="newIncSeverity" class="input-select">
+                <option value="SEV1">SEV1 — Critical (Immediate)</option>
+                <option value="SEV2">SEV2 — High (Major)</option>
+                <option value="SEV3">SEV3 — Medium (Moderate)</option>
+              </select>
+            </div>
+            <div class="form-group half">
+              <label for="newIncService">Primary Service</label>
+              <select id="newIncService" class="input-select">
+                <option value="payment-service">payment-service</option>
+                <option value="order-service">order-service</option>
+                <option value="auth-service">auth-service</option>
+                <option value="api-gateway">api-gateway</option>
+                <option value="inventory-service">inventory-service</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="newIncSymptoms">Reported Symptoms</label>
+            <input type="text" id="newIncSymptoms" class="input-text" placeholder="e.g. HTTP 500 errors spiking to 24%, p99 latency > 3500ms">
+          </div>
+          <div class="modal-footer" style="padding: 16px 0 0 0;">
+            <button type="button" class="btn btn-ghost" id="btnCancelNewIncident">Cancel</button>
+            <button type="submit" class="btn btn-primary">Dispatch Incident</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Application Scripts (ES Modules) -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
