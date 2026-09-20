@@ -67,6 +67,13 @@ class MockLLMProvider(LLMProvider):
                     query_intent="Inspect P95 latency and active connection pools",
                     time_window_minutes=15,
                 ),
+                InvestigationTask(
+                    task_id="task-mem-01",
+                    agent_type="memory_analyst",
+                    target_service="payment-service",
+                    query_intent="Query historical postmortems for similar incidents",
+                    time_window_minutes=60,
+                ),
             ]
             if "deploy" in prompt_lower or "c3a9f01" in prompt_lower or "2.4" in prompt_lower:
                 tasks.append(
@@ -130,6 +137,22 @@ class MockLLMProvider(LLMProvider):
                         relevance_score=0.98,
                     )
                 )
+            if (
+                "memory" in prompt_lower
+                or "historical" in prompt_lower
+                or "postmortem" in prompt_lower
+            ):
+                evidence_items.append(
+                    Evidence(
+                        id="EV-MEM-HIST-04",
+                        type="memory",
+                        source="payment-service",
+                        observation="Historical Incident PM-2025-001 resolved identical Redis connection pool exhaustion by increasing pool size and timeout",
+                        raw_reference="PM-2025-001: Redis Connection Pool Starvation Under Flash Sale Traffic",
+                        relevance_score=0.91,
+                        metadata={"incident_id": "PM-2025-001", "similarity_score": 0.89},
+                    )
+                )
 
             parsed_obj = AnalystAgentOutput(
                 agent_type="analyst",
@@ -140,6 +163,10 @@ class MockLLMProvider(LLMProvider):
             )
 
         elif response_model is RCAAgentOutput:
+            supp_ids = ["EV-LOG-REDIS-01", "EV-MET-LATENCY-02", "EV-CODE-DIFF-03"]
+            if "ev-mem-hist-04" in prompt_lower:
+                supp_ids.append("EV-MEM-HIST-04")
+
             parsed_obj = RCAAgentOutput(
                 hypotheses=[
                     Hypothesis(
@@ -150,11 +177,7 @@ class MockLLMProvider(LLMProvider):
                             "starving worker threads and causing P95 latency to jump to 2.8s."
                         ),
                         confidence=0.92,
-                        supporting_evidence_ids=[
-                            "EV-LOG-REDIS-01",
-                            "EV-MET-LATENCY-02",
-                            "EV-CODE-DIFF-03",
-                        ],
+                        supporting_evidence_ids=supp_ids,
                         contradicting_evidence_ids=[],
                         reasoning_summary=(
                             "The commit diff directly accounts for the connection pool saturation and the "
